@@ -1,0 +1,8 @@
+const {Pool}=require('pg'),bcrypt=require('bcryptjs'),jwt=require('jsonwebtoken'),crypto=require('crypto');let pool;
+const db=()=>pool||(pool=new Pool({connectionString:process.env.DATABASE_URL,ssl:{rejectUnauthorized:false},max:5}));
+const out=(r,s,x)=>{r.statusCode=s;r.setHeader('Content-Type','application/json; charset=utf-8');r.setHeader('Cache-Control','no-store');r.end(JSON.stringify(x))};
+const read=req=>new Promise((ok,no)=>{let b='';req.on('data',c=>{b+=c;if(b.length>1e6)no(Error('too large'))});req.on('end',()=>{try{ok(b?JSON.parse(b):{})}catch{no(Error('JSON غير صالح'))}});req.on('error',no)});
+const enc=v=>{const k=Buffer.from(process.env.ROUTER_ENCRYPTION_KEY||'','hex');if(k.length!==32)throw Error('مفتاح التشفير غير مضبوط');const iv=crypto.randomBytes(12),c=crypto.createCipheriv('aes-256-gcm',k,iv),d=Buffer.concat([c.update(v,'utf8'),c.final()]);return [iv.toString('base64'),c.getAuthTag().toString('base64'),d.toString('base64')].join('.')};
+const makeToken=u=>jwt.sign({id:u.id,username:u.username,role:u.role},process.env.JWT_SECRET,{expiresIn:'12h',issuer:'shabakah-monitor'});
+const who=req=>{const h=req.headers.authorization||'';if(!h.startsWith('Bearer '))throw Object.assign(Error('سجل الدخول أولاً'),{status:401});try{return jwt.verify(h.slice(7),process.env.JWT_SECRET,{issuer:'shabakah-monitor'})}catch{throw Object.assign(Error('انتهت الجلسة'),{status:401})}};
+const admin=u=>{if(u.role!=='admin')throw ObjecֻǱ˞
