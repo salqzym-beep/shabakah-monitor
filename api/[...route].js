@@ -48,7 +48,7 @@ async function verifyRouter(ip,user,password){
   let socket,buffer=Buffer.alloc(0),timer,stage=0,finished=false;
   const done=(err,value)=>{if(finished)return;finished=true;clearTimeout(timer);try{socket?.destroy();}catch{};err?reject(err):resolve(value);};
   timer=setTimeout(()=>done(fail('انتهت مهلة الاتصال. تحقق من IP ومن تفعيل API-SSL والمنفذ 8729.',504)),10000);
-  socket=tls.connect({host:ip,port:8729,rejectUnauthorized:true,minVersion:'TLSv1.2},()=>{socket.write(rosSentence(['/login','=name='+user,'=password='+password]));});
+  socket=tls.connect({host:ip,port:8729,rejectUnauthorized:true,minVersion:'TLSv1.2'},()=>{socket.write(rosSentence(['/login','=name='+user,'=password='+password]));});
   socket.on('error',e=>done(fail('تعذر الاتصال الآمن بالراوتر. تحقق من شهادة TLS وفتح المنفذ 8729 وقواعد الجدار الناري.',502)));
   socket.on('data',chunk=>{
    buffer=Buffer.concat([buffer,chunk]);
