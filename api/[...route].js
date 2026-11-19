@@ -40,23 +40,27 @@ function rosWord(s){const b=Buffer.from(String(s),'utf8');return Buffer.concat([
 function rosSentence(words){return Buffer.concat([...words.map(rosWord),Buffer.from([0])]);}
 function rosReadLen(buf,off){const c=buf[off];if(c<0x80)return [c,1];if(c<0xC0)return [((c&0x3F)<<8)|buf[off+1],2];if(c<0xE0)return [((c&0x1F)<<16)|(buf[off+1]<<8)|buf[off+2],3];if(c<0xF0)return [((c&0x0F)*0x1000000)+(buf[off+1]<<16)+(buf[off+2]<<8)+buf[off+3],4];return [buf.readUInt32BE(off+1),5];}
 function rosParse(buf){let off=0,words=[];while(off<buf.length){if(buf[off]===0)return {words,used:off+1};const [n,k]=rosReadLen(buf,off);if(off+k+n>buf.length)return null;words.push(buf.subarray(off+k,off+k+n).toString('utf8'));off+=k+n;}return null;}
-async function verifyRouter(ip,user,password){
- if(net.isIP(ip)!==4) throw fail('أدخل عنوان IPv4 صحيحاً');
+async function verifyRouter(address,user,password){
+ const raw=String(address||'').trim();
+ const match=raw.match(/^(\\d{1,3}(?:\\.\\d{1,3}){3})(?::(\\d{1,5}))?$/);
+ if(!match) throw fail('أدخل IPv4 صحيحاً، ويمكن إضافة المنفذ بهذا الشكل: 185.243.214.143:24263');
+ const ip=match[1],port=match[2]?Number(match[2]):8729;
+ if(net.isIP(ip)!==4||!Number.isInteger(port)||port<1||port>65535) throw fail('عنوان IP أو رقم المنفذ غير صحيح');
  const p=ip.split('.').map(Number);
  if(p[0]===10||p[0]===127||p[0]===0||p[0]>=224||(p[0]===169&&p[1]===254)||(p[0]===172&&p[1]>=16&&p[1]<=31)||(p[0]===192&&p[1]===168)) throw fail('يجب إدخال IP عام يمكن للخادم الوصول إليه');
  return new Promise((resolve,reject)=>{
   let socket,buffer=Buffer.alloc(0),timer,stage=0,finished=false;
   const done=(err,value)=>{if(finished)return;finished=true;clearTimeout(timer);try{socket?.destroy();}catch{};err?reject(err):resolve(value);};
-  timer=setTimeout(()=>done(fail('انتهت مهلة الاتصال. تحقق من IP ومن تفعيل API-SSL والمنفذ 8729.',504)),10000);
-  socket=tls.connect({host:ip,port:8729,rejectUnauthorized:true,minVersion:'TLSv1.2'},()=>{socket.write(rosSentence(['/login','=name='+user,'=password='+password]));});
-  socket.on('error',e=>done(fail('تعذر الاتصال الآمن بالراوتر. تحقق من شهادة TLS وفتح المنفذ 8729 وقواعد الجدار الناري.',502)));
+  timer=setTimeout(()=>done(fail('انتهت مهلة الاتصال. تحقق من العنوان والمنفذ '+port+' وتفعيل API-SSL وقواعد الجدار الناري.',504)),12000);
+  socket=tls.connect({host:ip,port,rejectUnauthorized:true,minVersion:'TLSv1.2'},()=>{socket.write(rosSentence(['/login','=name='+user,'=password='+password]));});
+  socket.on('error',e=>done(fail('تعذر الاتصال الآمن بالراوتر على المنفذ '+port+'. تأكد أن هذا منفذ API-SSL وليس API العادي، وأن شهادة TLS موثوقة.',502)));
   socket.on('data',chunk=>{
    buffer=Buffer.concat([buffer,chunk]);
    while(true){const parsed=rosParse(buffer);if(!parsed)break;buffer=buffer.subarray(parsed.used);const w=parsed.words;const type=w[0]||'';
     if(type==='!trap'){done(fail('رفض الراوتر تسجيل الدخول. تحقق من اسم المستخدم وكلمة المرور وصلاحية API.',401));return;}
     if(type==='!done'){
      if(stage===0){stage=1;socket.write(rosSentence(['/system/identity/print']));}
-     else {const identity=w.find(x=>x.startsWith('=name='));done(null,{identity:identity?identity.slice(6):'MikroTik'});return;}
+     else {const identity=w.find(x=>x.startsWith('=name='));done(null,{identity:identity?identity.slice(6):'MikroTik',port});return;}
     }
    }
   });
